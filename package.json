@@ -23,6 +23,7 @@
     "dev"
   ],
   "devDependencies": {
+    "@google/genai": "^1.33.0",
     "@eslint/js": "^9.37.0",
     "@types/node": "^20.12.7",
     "concurrently": "^9.2.1",
