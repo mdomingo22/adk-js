@@ -6,7 +6,7 @@
 
 // TODO - b/436079721: implement traceMergedToolCalls, traceToolCall, tracer.
 import {Content, createUserContent, FunctionCall, Part} from '@google/genai';
-import isEmpty from 'lodash-es/isEmpty.js';
+import {isEmpty} from 'lodash-es';
 
 import {InvocationContext} from '../agents/invocation_context.js';
 import {createEvent, Event, getFunctionCalls} from '../events/event.js';
