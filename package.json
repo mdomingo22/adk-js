@@ -13,6 +13,7 @@
     "build": "npm run build --workspaces",
     "clean": "npm run clean --workspaces",
     "clean:all": "rm -rf ./node_modules && npm run clean:all --workspaces",
+    "rebuild": "npm run clean:all && npm install && npm run build",
     "lint": "eslint **/*.ts",
     "lint:fix": "eslint --fix **/*.ts",
     "format": "prettier **/*.ts --write",

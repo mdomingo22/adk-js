@@ -75,9 +75,29 @@ function toSchema<TParameters extends ToolInputParameters>(
   return parameters;
 }
 
+/**
+ * A unique symbol to identify ADK agent classes.
+ * Defined once and shared by all BaseTool instances.
+ */
+const FUNCTION_TOOL_SIGNATURE_SYMBOL = Symbol.for('google.adk.functionTool');
+
+/**
+ * Type guard to check if an object is an instance of BaseTool.
+ * @param obj The object to check.
+ * @returns True if the object is an instance of BaseTool, false otherwise.
+ */
+export function isFunctionTool(obj: unknown): obj is FunctionTool {
+  return typeof obj === 'object' && obj !== null &&
+      FUNCTION_TOOL_SIGNATURE_SYMBOL in obj &&
+      obj[FUNCTION_TOOL_SIGNATURE_SYMBOL] === true;
+}
+
 export class FunctionTool<
   TParameters extends ToolInputParameters = undefined,
 > extends BaseTool {
+  /** A unique symbol to identify ADK function tool class. */
+  readonly[FUNCTION_TOOL_SIGNATURE_SYMBOL] = true;
+
   // User defined function.
   private readonly execute: ToolExecuteFunction<TParameters>;
   // Typed input parameters.

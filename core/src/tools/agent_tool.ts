@@ -34,6 +34,23 @@ export interface AgentToolConfig {
 }
 
 /**
+ * A unique symbol to identify ADK agent classes.
+ * Defined once and shared by all BaseTool instances.
+ */
+const AGENT_TOOL_SIGNATURE_SYMBOL = Symbol.for('google.adk.agentTool');
+
+/**
+ * Type guard to check if an object is an instance of BaseTool.
+ * @param obj The object to check.
+ * @returns True if the object is an instance of BaseTool, false otherwise.
+ */
+export function isAgentTool(obj: unknown): obj is AgentTool {
+  return typeof obj === 'object' && obj !== null &&
+      AGENT_TOOL_SIGNATURE_SYMBOL in obj &&
+      obj[AGENT_TOOL_SIGNATURE_SYMBOL] === true;
+}
+
+/**
  * A tool that wraps an agent.
  *
  * This tool allows an agent to be called as a tool within a larger
@@ -43,6 +60,9 @@ export interface AgentToolConfig {
  *  @param config: The configuration of the agent tool.
  */
 export class AgentTool extends BaseTool {
+  /** A unique symbol to identify ADK agent tool class. */
+  readonly[AGENT_TOOL_SIGNATURE_SYMBOL] = true;
+
   private readonly agent: BaseAgent;
 
   private readonly skipSummarization: boolean;

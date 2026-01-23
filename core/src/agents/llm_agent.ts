@@ -1198,9 +1198,29 @@ const CODE_EXECUTION_REQUEST_PROCESSOR = new CodeExecutionRequestProcessor();
 // --------------------------------------------------------------------------
 
 /**
+ * A unique symbol to identify ADK agent classes.
+ * Defined once and shared by all LlmAgent instances.
+ */
+const LLM_AGENT_SIGNATURE_SYMBOL = Symbol.for('google.adk.llmAgent');
+
+/**
+ * Type guard to check if an object is an instance of LlmAgent.
+ * @param obj The object to check.
+ * @returns True if the object is an instance of LlmAgent, false otherwise.
+ */
+export function isLlmAgent(obj: unknown): obj is LlmAgent {
+  return typeof obj === 'object' && obj !== null &&
+      LLM_AGENT_SIGNATURE_SYMBOL in obj &&
+      obj[LLM_AGENT_SIGNATURE_SYMBOL] === true;
+}
+
+/**
  * An agent that uses a large language model to generate responses.
  */
 export class LlmAgent extends BaseAgent {
+  /** A unique symbol to identify ADK LLM agent class. */
+  readonly [LLM_AGENT_SIGNATURE_SYMBOL] = true;
+
   model?: string|BaseLlm;
   instruction: string|InstructionProvider;
   globalInstruction: string|InstructionProvider;

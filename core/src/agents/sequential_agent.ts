@@ -14,9 +14,31 @@ import {ReadonlyContext} from './readonly_context.js';
 const TASK_COMPLETED_TOOL_NAME = 'task_completed';
 
 /**
+ * A unique symbol to identify ADK agent classes.
+ * Defined once and shared by all SequentialAgent instances.
+ */
+const SEQUENTIAL_AGENT_SIGNATURE_SYMBOL = Symbol.for('google.adk.sequentialAgent');
+
+/**
+ * Type guard to check if an object is an instance of SequentialAgent.
+ * @param obj The object to check.
+ * @returns True if the object is an instance of SequentialAgent, false otherwise.
+ */
+export function isSequentialAgent(obj: unknown): obj is SequentialAgent {
+  return typeof obj === 'object' && obj !== null &&
+      SEQUENTIAL_AGENT_SIGNATURE_SYMBOL in obj &&
+      obj[SEQUENTIAL_AGENT_SIGNATURE_SYMBOL] === true;
+}
+
+/**
  * A shell agent that runs its sub-agents in a sequential order.
  */
 export class SequentialAgent extends BaseAgent {
+  /**
+   * A unique symbol to identify ADK sequential agent class.
+   */
+  readonly[SEQUENTIAL_AGENT_SIGNATURE_SYMBOL] = true;
+
   protected async *
       runAsyncImpl(
           context: InvocationContext,
