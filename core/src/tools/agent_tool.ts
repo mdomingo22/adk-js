@@ -7,7 +7,7 @@
 import {Content, FunctionDeclaration, Type} from '@google/genai';
 
 import {BaseAgent} from '../agents/base_agent.js';
-import {LlmAgent} from '../agents/llm_agent.js';
+import {isLlmAgent} from '../agents/llm_agent.js';
 import {Event} from '../events/event.js';
 import {InMemoryMemoryService} from '../memory/in_memory_memory_service.js';
 import {Runner} from '../runner/runner.js';
@@ -16,7 +16,6 @@ import {GoogleLLMVariant} from '../utils/variant_utils.js';
 
 import {BaseTool, RunAsyncToolRequest} from './base_tool.js';
 import {ForwardingArtifactService} from './forwarding_artifact_service.js';
-import {ToolContext} from './tool_context.js';
 
 /**
  * The configuration of the agent tool.
@@ -77,7 +76,7 @@ export class AgentTool extends BaseTool {
   override _getDeclaration(): FunctionDeclaration {
     let declaration: FunctionDeclaration;
 
-    if (this.agent instanceof LlmAgent && this.agent.inputSchema) {
+    if (isLlmAgent(this.agent) && this.agent.inputSchema) {
       declaration = {
         name: this.name,
         description: this.description,
@@ -103,8 +102,7 @@ export class AgentTool extends BaseTool {
     }
 
     if (this.apiVariant !== GoogleLLMVariant.GEMINI_API) {
-      const hasOutputSchema =
-          this.agent instanceof LlmAgent && this.agent.outputSchema;
+      const hasOutputSchema = isLlmAgent(this.agent) && this.agent.outputSchema;
       declaration.response =
           hasOutputSchema ? {type: Type.OBJECT} : {type: Type.STRING};
     }
@@ -118,8 +116,7 @@ export class AgentTool extends BaseTool {
       toolContext.actions.skipSummarization = true;
     }
 
-    const hasInputSchema =
-        this.agent instanceof LlmAgent && this.agent.inputSchema;
+    const hasInputSchema = isLlmAgent(this.agent) && this.agent.inputSchema;
     const content: Content = {
       role: 'user',
       parts: [
@@ -164,9 +161,7 @@ export class AgentTool extends BaseTool {
       return '';
     }
 
-    const hasOutputSchema =
-        this.agent instanceof LlmAgent && this.agent.outputSchema;
-
+    const hasOutputSchema = isLlmAgent(this.agent) && this.agent.outputSchema;
     const mergedText = lastEvent.content.parts.map((part) => part.text)
                            .filter((text) => text)
                            .join('\n');

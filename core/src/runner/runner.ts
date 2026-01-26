@@ -12,11 +12,14 @@ import {
   InvocationContext,
   newInvocationContextId,
 } from '../agents/invocation_context.js';
-import {LlmAgent} from '../agents/llm_agent.js';
+import {isLlmAgent} from '../agents/llm_agent.js';
 import {createRunConfig, RunConfig} from '../agents/run_config.js';
 import {BaseArtifactService} from '../artifacts/base_artifact_service.js';
 import {BaseCredentialService} from '../auth/credential_service/base_credential_service.js';
-import {BuiltInCodeExecutor} from '../code_executors/built_in_code_executor.js';
+import {
+  BuiltInCodeExecutor,
+  isBuiltInCodeExecutor,
+} from '../code_executors/built_in_code_executor.js';
 import {createEvent, Event, getFunctionCalls} from '../events/event.js';
 import {createEventActions} from '../events/event_actions.js';
 import {BaseMemoryService} from '../memory/base_memory_service.js';
@@ -109,7 +112,7 @@ export class Runner {
         throw new Error(`Session not found: ${sessionId}`);
       }
 
-      if (runConfig.supportCfc && this.agent instanceof LlmAgent) {
+      if (runConfig.supportCfc && isLlmAgent(this.agent)) {
         const modelName = this.agent.canonicalModel.model;
         if (!isGemini2OrAbove(modelName)) {
           throw new Error(
@@ -119,7 +122,7 @@ export class Runner {
           );
         }
 
-        if (!(this.agent.codeExecutor instanceof BuiltInCodeExecutor)) {
+        if (!isBuiltInCodeExecutor(this.agent.codeExecutor)) {
           this.agent.codeExecutor = new BuiltInCodeExecutor();
         }
       }
@@ -339,7 +342,7 @@ export class Runner {
   private isRoutableLlmAgent(agentToRun: BaseAgent): boolean {
     let agent: BaseAgent | undefined = agentToRun;
     while (agent) {
-      if (!(agent instanceof LlmAgent)) {
+      if (!isLlmAgent(agent)) {
         return false;
       }
       if (agent.disallowTransferToParent) {

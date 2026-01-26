@@ -14,8 +14,11 @@ import {
 import {cloneDeep} from 'lodash-es';
 import {z} from 'zod';
 
-import {BaseCodeExecutor} from '../code_executors/base_code_executor.js';
-import {BuiltInCodeExecutor} from '../code_executors/built_in_code_executor.js';
+import {
+  BaseCodeExecutor,
+  isBaseCodeExecutor,
+} from '../code_executors/base_code_executor.js';
+import {isBuiltInCodeExecutor} from '../code_executors/built_in_code_executor.js';
 import {
   buildCodeExecutionResultPart,
   buildExecutableCodePart,
@@ -330,7 +333,7 @@ class BasicLlmRequestProcessor extends BaseLlmRequestProcessor {
     llmRequest: LlmRequest,
   ): AsyncGenerator<Event, void, void> {
     const agent = invocationContext.agent;
-    if (!(agent instanceof LlmAgent)) {
+    if (!isLlmAgent(agent)) {
       return;
     }
 
@@ -397,7 +400,7 @@ class InstructionsLlmRequestProcessor extends BaseLlmRequestProcessor {
     // TODO - b/425992518: unexpected and buggy for performance.
     // Global instruction should be explicitly scoped.
     // Step 1: Appends global instructions if set by RootAgent.
-    if (rootAgent instanceof LlmAgent && rootAgent.globalInstruction) {
+    if (isLlmAgent(rootAgent) && rootAgent.globalInstruction) {
       const {instruction, requireStateInjection} =
         await rootAgent.canonicalGlobalInstruction(
           new ReadonlyContext(invocationContext),
@@ -440,7 +443,7 @@ class ContentRequestProcessor implements BaseLlmRequestProcessor {
     llmRequest: LlmRequest,
   ): AsyncGenerator<Event, void, void> {
     const agent = invocationContext.agent;
-    if (!agent || !(agent instanceof LlmAgent)) {
+    if (!agent || !isLlmAgent(agent)) {
       return;
     }
 
@@ -546,7 +549,7 @@ to your parent agent.
     const targets: BaseAgent[] = [];
     targets.push(...agent.subAgents);
 
-    if (!agent.parentAgent || !(agent.parentAgent instanceof LlmAgent)) {
+    if (!agent.parentAgent || !isLlmAgent(agent.parentAgent)) {
       return targets;
     }
 
@@ -575,7 +578,7 @@ class RequestConfirmationLlmRequestProcessor extends BaseLlmRequestProcessor {
     llmRequest: LlmRequest,
   ): AsyncGenerator<Event, void, void> {
     const agent = invocationContext.agent;
-    if (!(agent instanceof LlmAgent)) {
+    if (!isLlmAgent(agent)) {
       return;
     }
     const events = invocationContext.session.events;
@@ -749,7 +752,7 @@ class CodeExecutionRequestProcessor extends BaseLlmRequestProcessor {
       yield event;
     }
 
-    if (!(invocationContext.agent.codeExecutor instanceof BaseCodeExecutor)) {
+    if (!isBaseCodeExecutor(invocationContext.agent.codeExecutor)) {
       return;
     }
 
@@ -875,17 +878,17 @@ async function* runPreProcessor(
 ): AsyncGenerator<Event, void, unknown> {
   const agent = invocationContext.agent;
 
-  if (!(agent instanceof LlmAgent)) {
+  if (!isLlmAgent(agent)) {
     return;
   }
 
   const codeExecutor = agent.codeExecutor;
 
-  if (!codeExecutor || !(codeExecutor instanceof BaseCodeExecutor)) {
+  if (!codeExecutor || !isBaseCodeExecutor(codeExecutor)) {
     return;
   }
 
-  if (codeExecutor instanceof BuiltInCodeExecutor) {
+  if (isBuiltInCodeExecutor(codeExecutor)) {
     codeExecutor.processLlmRequest(llmRequest);
     return;
   }
@@ -999,13 +1002,13 @@ async function* runPostProcessor(
 ): AsyncGenerator<Event, void, unknown> {
   const agent = invocationContext.agent;
 
-  if (!(agent instanceof LlmAgent)) {
+  if (!isLlmAgent(agent)) {
     return;
   }
 
   const codeExecutor = agent.codeExecutor;
 
-  if (!codeExecutor || !(codeExecutor instanceof BaseCodeExecutor)) {
+  if (!codeExecutor || !isBaseCodeExecutor(codeExecutor)) {
     return;
   }
 
@@ -1013,7 +1016,7 @@ async function* runPostProcessor(
     return;
   }
 
-  if (codeExecutor instanceof BuiltInCodeExecutor) {
+  if (isBuiltInCodeExecutor(codeExecutor)) {
     return;
   }
 
@@ -1148,7 +1151,7 @@ function getOrSetExecutionId(
 ): string | undefined {
   const agent = invocationContext.agent;
 
-  if (!(agent instanceof LlmAgent) || !agent.codeExecutor?.stateful) {
+  if (!isLlmAgent(agent) || !agent.codeExecutor?.stateful) {
     return undefined;
   }
 
@@ -1423,7 +1426,7 @@ export class LlmAgent extends BaseAgent {
 
     let ancestorAgent = this.parentAgent;
     while (ancestorAgent) {
-      if (ancestorAgent instanceof LlmAgent) {
+      if (isLlmAgent(ancestorAgent)) {
         return ancestorAgent.canonicalModel;
       }
       ancestorAgent = ancestorAgent.parentAgent;

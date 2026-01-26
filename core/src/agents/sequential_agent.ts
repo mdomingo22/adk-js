@@ -8,7 +8,7 @@ import {FunctionTool} from '../tools/function_tool.js';
 
 import {BaseAgent} from './base_agent.js';
 import {InvocationContext} from './invocation_context.js';
-import {LlmAgent} from './llm_agent.js';
+import {isLlmAgent} from './llm_agent.js';
 import {ReadonlyContext} from './readonly_context.js';
 
 const TASK_COMPLETED_TOOL_NAME = 'task_completed';
@@ -69,7 +69,7 @@ export class SequentialAgent extends BaseAgent {
     context: InvocationContext,
   ): AsyncGenerator<Event, void, void> {
     for (const subAgent of this.subAgents) {
-      if (subAgent instanceof LlmAgent) {
+      if (isLlmAgent(subAgent)) {
         const agentTools = await subAgent.canonicalTools(
           new ReadonlyContext(context),
         );

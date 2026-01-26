@@ -77,6 +77,11 @@ export {
 export type {Event} from './events/event.js';
 export {createEventActions} from './events/event_actions.js';
 export type {EventActions} from './events/event_actions.js';
+export {
+  BaseExampleProvider,
+  isBaseExampleProvider,
+} from './examples/base_example_provider.js';
+export type {Example} from './examples/example.js';
 export {InMemoryMemoryService} from './memory/in_memory_memory_service.js';
 export type {MemoryEntry} from './memory/memory_entry.js';
 export {BaseLlm, isBaseLlm} from './models/base_llm.js';
