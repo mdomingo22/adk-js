@@ -5,11 +5,7 @@
  */
 
 import {FunctionDeclaration, Schema, Type} from '@google/genai';
-import {
-  type infer as zInfer,
-  ZodObject,
-  type ZodRawShape,
-} from 'zod';
+import {type infer as zInfer, ZodObject, type ZodRawShape} from 'zod';
 
 import {isZodObject, zodObjectToSchema} from '../utils/simple_zod_to_json.js';
 
@@ -19,10 +15,7 @@ import {ToolContext} from './tool_context.js';
 /**
  * Input parameters of the function tool.
  */
-export type ToolInputParameters =
-  | undefined
-  | ZodObject<ZodRawShape>
-  | Schema;
+export type ToolInputParameters = undefined | ZodObject<ZodRawShape> | Schema;
 
 /*
  * The arguments of the function tool.
@@ -37,9 +30,7 @@ export type ToolExecuteArgument<TParameters extends ToolInputParameters> =
 /*
  * The function to execute by the tool.
  */
-type ToolExecuteFunction<
-  TParameters extends ToolInputParameters,
-> = (
+export type ToolExecuteFunction<TParameters extends ToolInputParameters> = (
   input: ToolExecuteArgument<TParameters>,
   tool_context?: ToolContext,
 ) => Promise<unknown> | unknown;
@@ -52,9 +43,7 @@ type ToolExecuteFunction<
  * Note: Unlike Python's ADK, JSDoc on the `execute` function is ignored
  * for tool definition generation.
  */
-export type ToolOptions<
-  TParameters extends ToolInputParameters,
-> = {
+export type ToolOptions<TParameters extends ToolInputParameters> = {
   name?: string;
   description: string;
   parameters?: TParameters;
@@ -63,7 +52,8 @@ export type ToolOptions<
 };
 
 function toSchema<TParameters extends ToolInputParameters>(
-  parameters: TParameters): Schema {
+  parameters: TParameters,
+): Schema {
   if (parameters === undefined) {
     return {type: Type.OBJECT, properties: {}};
   }
@@ -87,16 +77,19 @@ const FUNCTION_TOOL_SIGNATURE_SYMBOL = Symbol.for('google.adk.functionTool');
  * @returns True if the object is an instance of BaseTool, false otherwise.
  */
 export function isFunctionTool(obj: unknown): obj is FunctionTool {
-  return typeof obj === 'object' && obj !== null &&
-      FUNCTION_TOOL_SIGNATURE_SYMBOL in obj &&
-      obj[FUNCTION_TOOL_SIGNATURE_SYMBOL] === true;
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    FUNCTION_TOOL_SIGNATURE_SYMBOL in obj &&
+    obj[FUNCTION_TOOL_SIGNATURE_SYMBOL] === true
+  );
 }
 
 export class FunctionTool<
   TParameters extends ToolInputParameters = undefined,
 > extends BaseTool {
   /** A unique symbol to identify ADK function tool class. */
-  readonly[FUNCTION_TOOL_SIGNATURE_SYMBOL] = true;
+  readonly [FUNCTION_TOOL_SIGNATURE_SYMBOL] = true;
 
   // User defined function.
   private readonly execute: ToolExecuteFunction<TParameters>;
