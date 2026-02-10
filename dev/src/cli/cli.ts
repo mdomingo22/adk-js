@@ -7,8 +7,10 @@
 
 import {
   BaseArtifactService,
-  GcsArtifactService,
+  BaseSessionService,
   LogLevel,
+  getArtifactServiceFromUri,
+  getSessionServiceFromUri,
   setLogLevel,
 } from '@google/adk';
 import {Argument, Command, Option} from 'commander';
@@ -51,14 +53,20 @@ function getAbsolutePath(p: string): string {
   return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
 }
 
-function getArtifactServiceFromUri(uri: string): BaseArtifactService {
-  if (uri.startsWith('gs://')) {
-    const bucket = uri.split('://')[1];
+function getSessionServiceFromOptions(options: {
+  session_service_uri?: string;
+}): BaseSessionService {
+  return getSessionServiceFromUri(
+    options['session_service_uri'] || process.env.DATABASE_URL || 'memory://',
+  );
+}
 
-    return new GcsArtifactService(bucket);
-  }
-
-  throw new Error(`Unsupported artifact service URI: ${uri}`);
+function getArtifactServiceFromOptions(options: {
+  artifact_service_uri?: string;
+}): BaseArtifactService | undefined {
+  return getArtifactServiceFromUri(
+    options['artifact_service_uri'] || 'memory://',
+  );
 }
 
 function getAgentFileOptions(options: {
@@ -109,8 +117,11 @@ const LOG_LEVEL_OPTION = new Option(
   '--log_level <string>',
   'Optional. The log level of the server',
 ).default('info');
+const SESSION_SERVICE_URI_OPTION = new Option(
+  '--session_service_uri <string>, Optional. The URI of the session service. Supported URIs: memory:// for in-memory session service.',
+);
 const ARTIFACT_SERVICE_URI_OPTION = new Option(
-  '--artifact_service_uri <string>, Optional. The URI of the artifact service, supported URIs: gs://<bucket name> for GCS artifact service.',
+  '--artifact_service_uri <string>, Optional. The URI of the artifact service. Supported URIs: gs://<bucket name> for GCS artifact service.',
 );
 const OTEL_TO_CLOUD_OPTION = new Option(
   '--otel_to_cloud [boolean]',
@@ -144,6 +155,7 @@ program
   .addOption(ORIGINS_OPTION)
   .addOption(VERBOSE_OPTION)
   .addOption(LOG_LEVEL_OPTION)
+  .addOption(SESSION_SERVICE_URI_OPTION)
   .addOption(ARTIFACT_SERVICE_URI_OPTION)
   .addOption(OTEL_TO_CLOUD_OPTION)
   .addOption(COMPILE_AGENT_FILE)
@@ -158,9 +170,8 @@ program
       port: parseInt(options['port'], 10),
       serveDebugUI: true,
       allowOrigins: options['allow_origins'],
-      artifactService: options['artifact_service_uri']
-        ? getArtifactServiceFromUri(options['artifact_service_uri'])
-        : undefined,
+      sessionService: getSessionServiceFromOptions(options),
+      artifactService: getArtifactServiceFromOptions(options),
       otelToCloud: options['otel_to_cloud'] ? true : false,
       agentFileLoadOptions: getAgentFileOptions(options),
     });
@@ -177,6 +188,7 @@ program
   .addOption(ORIGINS_OPTION)
   .addOption(VERBOSE_OPTION)
   .addOption(LOG_LEVEL_OPTION)
+  .addOption(SESSION_SERVICE_URI_OPTION)
   .addOption(ARTIFACT_SERVICE_URI_OPTION)
   .addOption(OTEL_TO_CLOUD_OPTION)
   .addOption(COMPILE_AGENT_FILE)
@@ -191,9 +203,8 @@ program
       port: parseInt(options['port'], 10),
       serveDebugUI: false,
       allowOrigins: options['allow_origins'],
-      artifactService: options['artifact_service_uri']
-        ? getArtifactServiceFromUri(options['artifact_service_uri'])
-        : undefined,
+      sessionService: getSessionServiceFromOptions(options),
+      artifactService: getArtifactServiceFromOptions(options),
       otelToCloud: options['otel_to_cloud'] ? true : false,
       agentFileLoadOptions: getAgentFileOptions(options),
     });
@@ -257,6 +268,7 @@ program
   )
   .addOption(VERBOSE_OPTION)
   .addOption(LOG_LEVEL_OPTION)
+  .addOption(SESSION_SERVICE_URI_OPTION)
   .addOption(ARTIFACT_SERVICE_URI_OPTION)
   .addOption(OTEL_TO_CLOUD_OPTION)
   .addOption(COMPILE_AGENT_FILE)
@@ -271,9 +283,8 @@ program
       savedSessionFile: options['resume'],
       saveSession: getBoolean(options['save_session']),
       sessionId: options['session_id'],
-      artifactService: options['artifact_service_uri']
-        ? getArtifactServiceFromUri(options['artifact_service_uri'])
-        : undefined,
+      sessionService: getSessionServiceFromOptions(options),
+      artifactService: getArtifactServiceFromOptions(options),
       otelToCloud: options['otel_to_cloud'] ? true : false,
       agentFileLoadOptions: getAgentFileOptions(options),
     });
@@ -319,6 +330,7 @@ DEPLOY_COMMAND.command('cloud_run')
   .addOption(ORIGINS_OPTION)
   .addOption(VERBOSE_OPTION)
   .addOption(LOG_LEVEL_OPTION)
+  .addOption(SESSION_SERVICE_URI_OPTION)
   .addOption(ARTIFACT_SERVICE_URI_OPTION)
   .addOption(COMPILE_AGENT_FILE)
   .addOption(BUNDLE_AGENT_FILE)
@@ -348,9 +360,10 @@ DEPLOY_COMMAND.command('cloud_run')
       logLevel: options['log_level'],
       adkVersion: options['adk_version'],
       allowOrigins: options['allow_origins'],
-      extraGcloudArgs,
+      sessionServiceUri: options['session_service_uri'],
       artifactServiceUri: options['artifact_service_uri'],
       agentFileLoadOptions: getAgentFileOptions(options),
+      extraGcloudArgs,
     });
   });
 
