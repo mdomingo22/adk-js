@@ -59,11 +59,11 @@ export interface GeminiParams {
  * Integration for Gemini models.
  */
 export class Gemini extends BaseLlm {
-  private readonly apiKey?: string;
-  private readonly vertexai: boolean;
-  private readonly project?: string;
-  private readonly location?: string;
-  private readonly headers?: Record<string, string>;
+  protected readonly apiKey?: string;
+  protected readonly vertexai: boolean;
+  protected readonly project?: string;
+  protected readonly location?: string;
+  protected readonly headers?: Record<string, string>;
 
   /**
    * @param params The parameters for creating a Gemini instance.
