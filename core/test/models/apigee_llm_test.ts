@@ -5,20 +5,20 @@
  */
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
-import {GoogleGenAI} from '@google/genai';
+import {GoogleGenAI, HttpOptions} from '@google/genai';
 
 import {
   ApigeeLlm,
   ApigeeLlmParams,
-} from '../../src/models/apigee_llm.js';
-import {LlmRequest} from '../../src/models/llm_request.js';
-import {LLMRegistry} from '../../src/models/registry.js';
-import {Gemini} from '../../src/models/google_llm.js';
+  BaseLlmConnection,
+  Gemini,
+  LLMRegistry,
+  LlmRequest,
+} from '@google/adk';
 
 const geminiModelString = 'apigee/gemini/gemini-1.5-flash';
 const vertexModelString = 'apigee/vertex_ai/model-id';
 const defaultProxyUrl = 'https://proxy.example.com';
-
 
 describe('ApigeeLlm', () => {
   afterEach(() => {
@@ -31,8 +31,10 @@ describe('ApigeeLlm', () => {
 
   describe('constructor', () => {
     it('simple gemini model', () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       expect(llm).toBeInstanceOf(ApigeeLlm);
     });
 
@@ -48,14 +50,13 @@ describe('ApigeeLlm', () => {
       }).toThrowError(/Proxy URL must be provided/);
     });
 
-    it('gemini uses APIGEE_PROXY_URL env variable if proxyUrl is not provided',
-       () => {
-         process.env['APIGEE_PROXY_URL'] = 'https://env-proxy.example.com';
-         const llm = new ApigeeLlm({
-           model: geminiModelString,
-         });
-         expect(llm['proxyUrl']).toBe('https://env-proxy.example.com');
-       });
+    it('gemini uses APIGEE_PROXY_URL env variable if proxyUrl is not provided', () => {
+      process.env['APIGEE_PROXY_URL'] = 'https://env-proxy.example.com';
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+      });
+      expect(llm['proxyUrl']).toBe('https://env-proxy.example.com');
+    });
 
     it('vertexai is used if the model starts with apigee/vertex_ai/', () => {
       process.env['GOOGLE_CLOUD_PROJECT'] = 'test-project';
@@ -87,13 +88,13 @@ describe('ApigeeLlm', () => {
     const envVarTestCases: EnvVarTestCase[] = [
       {
         description:
-            'vertexai with no project throws an error about missing GOOGLE_CLOUD_PROJECT',
+          'vertexai with no project throws an error about missing GOOGLE_CLOUD_PROJECT',
         envVars: {},
         expectedError: /GOOGLE_CLOUD_PROJECT/,
       },
       {
         description:
-            'vertexai with project but no location throws an error about missing GOOGLE_CLOUD_LOCATION',
+          'vertexai with project but no location throws an error about missing GOOGLE_CLOUD_LOCATION',
         envVars: {
           'GOOGLE_CLOUD_PROJECT': 'test-project',
         },
@@ -101,7 +102,7 @@ describe('ApigeeLlm', () => {
       },
       {
         description:
-            'vertexai with project and location but no proxy url throws an error about missing APIGEE_PROXY_URL',
+          'vertexai with project and location but no proxy url throws an error about missing APIGEE_PROXY_URL',
         envVars: {
           'GOOGLE_CLOUD_LOCATION': 'us-central1',
           'GOOGLE_CLOUD_PROJECT': 'test-project',
@@ -125,52 +126,85 @@ describe('ApigeeLlm', () => {
 
   describe('apiClient', () => {
     it('should configure apiClient with proxyUrl', () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       const apiClient = llm.apiClient;
       // tslint:disable-next-line:no-any
-      expect((apiClient as any).apiClient.clientOptions.httpOptions.baseUrl)
-          .toBe(
-              'https://proxy.example.com',
-          );
+      const httpOptions = apiClient['apiClient']['clientOptions'][
+        'httpOptions'
+      ] as HttpOptions;
+      expect(httpOptions.baseUrl).toBe('https://proxy.example.com');
     });
   });
 
   describe('liveApiClient', () => {
     it('should return a GoogleGenAI instance', () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       expect(llm.liveApiClient).toBeInstanceOf(GoogleGenAI);
     });
 
     it('should configure liveApiClient with proxyUrl', () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       const liveApiClient = llm.liveApiClient;
       // tslint:disable-next-line:no-any
-      expect((liveApiClient as any).apiClient.clientOptions.httpOptions.baseUrl)
-          .toBe(
-              'https://proxy.example.com',
-          );
+      const httpOptions = liveApiClient['apiClient']['clientOptions'][
+        'httpOptions'
+      ] as HttpOptions;
+      expect(httpOptions.baseUrl).toBe('https://proxy.example.com');
+    });
+
+    it('should include apiVersion and exclude user headers in liveApiClient', () => {
+      const userHeaders = {'x-custom-header': 'should-not-be-here'};
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+        headers: userHeaders,
+      });
+      const liveApiClient = llm.liveApiClient;
+      const httpOptions = liveApiClient['apiClient']['clientOptions'][
+        'httpOptions'
+      ] as HttpOptions;
+
+      expect(httpOptions.apiVersion).toBe(llm.liveApiVersion);
+      expect(httpOptions.headers).toBeDefined();
+      expect(httpOptions.headers!['x-goog-api-client']).toContain(
+        'google-adk/',
+      );
+      // user headers should not be included in live api client calls.
+      expect(httpOptions.headers!['x-custom-header']).toBeUndefined();
+      expect(httpOptions.baseUrl).toBe(defaultProxyUrl);
     });
   });
 
   describe('generateContentAsync', () => {
     it('should use the modified model in the base path', async () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       const request: LlmRequest = {
-        contents: [{
-          parts: [{text: 'Hello'}],
-        }],
+        contents: [
+          {
+            parts: [{text: 'Hello'}],
+          },
+        ],
         liveConnectConfig: {},
-        toolsDict: {}
+        toolsDict: {},
       };
 
-      const fetchSpy =
-          vi.spyOn(globalThis, 'fetch')
-              .mockResolvedValue(new Response(
-                  JSON.stringify({candidates: []}), {status: 200}));
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify({candidates: []}), {status: 200}),
+        );
 
       const generator = llm.generateContentAsync(request);
       await generator.next();
@@ -183,21 +217,26 @@ describe('ApigeeLlm', () => {
     });
 
     it('should use model from request if provided', async () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       const request: LlmRequest = {
-        contents: [{
-          parts: [{text: 'Hello'}],
-        }],
+        contents: [
+          {
+            parts: [{text: 'Hello'}],
+          },
+        ],
         model: 'apigee/gemini/other-model',
         liveConnectConfig: {},
         toolsDict: {},
       };
 
-      const fetchSpy =
-          vi.spyOn(globalThis, 'fetch')
-              .mockResolvedValue(new Response(
-                  JSON.stringify({candidates: []}), {status: 200}));
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify({candidates: []}), {status: 200}),
+        );
 
       const generator = llm.generateContentAsync(request);
       await generator.next();
@@ -212,18 +251,24 @@ describe('ApigeeLlm', () => {
 
   describe('connect', () => {
     it('should call super.connect with modified model ID', async () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       const request: LlmRequest = {
-        contents: [{
-          parts: [{text: 'Hello'}],
-        }],
+        contents: [
+          {
+            parts: [{text: 'Hello'}],
+          },
+        ],
         liveConnectConfig: {},
-        toolsDict: {}
+        toolsDict: {},
       };
 
       // Spy on super.connect (Gemini.prototype.connect)
-      const connectSpy = vi.spyOn(Gemini.prototype, 'connect').mockResolvedValue({} as any);
+      const connectSpy = vi
+        .spyOn(Gemini.prototype, 'connect')
+        .mockResolvedValue({} as BaseLlmConnection);
 
       await llm.connect(request);
 
@@ -234,20 +279,26 @@ describe('ApigeeLlm', () => {
       expect(calledRequest.model).toBe('gemini-1.5-flash');
     });
 
-     it('should call super.connect with modified model ID from request override', async () => {
-      const llm =
-          new ApigeeLlm({model: geminiModelString, proxyUrl: defaultProxyUrl});
+    it('should call super.connect with modified model ID from request override', async () => {
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
       const request: LlmRequest = {
-        contents: [{
-          parts: [{text: 'Hello'}],
-        }],
+        contents: [
+          {
+            parts: [{text: 'Hello'}],
+          },
+        ],
         model: 'apigee/gemini/other-model-connect',
         liveConnectConfig: {},
-        toolsDict: {}
+        toolsDict: {},
       };
 
       // Spy on super.connect (Gemini.prototype.connect)
-      const connectSpy = vi.spyOn(Gemini.prototype, 'connect').mockResolvedValue({} as any);
+      const connectSpy = vi
+        .spyOn(Gemini.prototype, 'connect')
+        .mockResolvedValue({} as BaseLlmConnection);
 
       await llm.connect(request);
 
@@ -257,8 +308,7 @@ describe('ApigeeLlm', () => {
     });
   });
 
-  describe('validateModel', () => {
-    const validateModel = ApigeeLlm['validateModel'];
+  describe('validateModel (implicit via constructor)', () => {
     const validModels = [
       'apigee/model-id',
       'apigee/gemini/model-id',
@@ -267,8 +317,13 @@ describe('ApigeeLlm', () => {
     ];
 
     validModels.forEach((model) => {
-      it(`should return true for valid model: ${model}`, () => {
-        expect(validateModel(model)).toBe(true);
+      it(`should accept valid model: ${model}`, () => {
+        // Mock env vars for vertexai models to avoid other errors
+        process.env['GOOGLE_CLOUD_PROJECT'] = 'test-project';
+        process.env['GOOGLE_CLOUD_LOCATION'] = 'us-central1';
+        expect(() => {
+          new ApigeeLlm({model, proxyUrl: defaultProxyUrl});
+        }).not.toThrowError(/not a valid Apigee model/);
       });
     });
 
@@ -282,14 +337,15 @@ describe('ApigeeLlm', () => {
     ];
 
     invalidModels.forEach((model) => {
-      it(`should return false for invalid model: ${model}`, () => {
-        expect(validateModel(model)).toBe(false);
+      it(`should throw for invalid model: ${model}`, () => {
+        expect(() => {
+          new ApigeeLlm({model, proxyUrl: defaultProxyUrl});
+        }).toThrowError(/not a valid Apigee model/);
       });
     });
   });
 
-  describe('getModelId', () => {
-    const getModelId = ApigeeLlm['getModelId'];
+  describe('getModelId (implicit via generateContentAsync)', () => {
     const modelIdTestCases = [
       {model: 'apigee/model-id1', expected: 'model-id1'},
       {model: 'apigee/gemini/model-id2', expected: 'model-id2'},
@@ -300,14 +356,49 @@ describe('ApigeeLlm', () => {
     ];
 
     modelIdTestCases.forEach(({model, expected}) => {
-      it(`should extract model ID correctly for ${model}`, () => {
-        expect(getModelId(model)).toBe(expected);
+      it(`should extract model ID correctly for ${model} in request`, async () => {
+        const llm = new ApigeeLlm({
+          model: geminiModelString,
+          proxyUrl: defaultProxyUrl,
+        });
+
+        const fetchSpy = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValue(
+            new Response(JSON.stringify({candidates: []}), {status: 200}),
+          );
+
+        const request: LlmRequest = {
+          contents: [{parts: [{text: 'Hello'}]}],
+          model: model, // Override model in request
+          liveConnectConfig: {},
+          toolsDict: {},
+        };
+
+        const generator = llm.generateContentAsync(request);
+        await generator.next();
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        const url = fetchSpy.mock.lastCall![0] as string;
+        // Verify the URL contains the expected model ID
+        expect(url).toContain(expected);
       });
     });
 
-    it('should throw error for invalid model string', () => {
-      expect(() => getModelId('invalid/model'))
-          .toThrowError(/Model invalid\/model is not a valid Apigee model/);
+    it('should throw error for invalid model string in request', async () => {
+      const llm = new ApigeeLlm({
+        model: geminiModelString,
+        proxyUrl: defaultProxyUrl,
+      });
+      const request: LlmRequest = {
+        contents: [],
+        model: 'invalid/model',
+      };
+
+      const generator = llm.generateContentAsync(request);
+      await expect(generator.next()).rejects.toThrowError(
+        /not a valid Apigee model/,
+      );
     });
   });
 
@@ -351,7 +442,7 @@ describe('ApigeeLlm', () => {
         description: 'apigee/v1/gemini-1.5-flash uses v1',
         llmParams: {
           model: 'apigee/v1/gemini-1.5-flash',
-          proxyUrl: defaultProxyUrl
+          proxyUrl: defaultProxyUrl,
         },
         expectedVersion: 'v1',
       },
@@ -359,24 +450,25 @@ describe('ApigeeLlm', () => {
         description: 'apigee/gemini/v2/gemini-1.5-flash uses v2',
         llmParams: {
           model: 'apigee/gemini/v2/gemini-1.5-flash',
-          proxyUrl: defaultProxyUrl
+          proxyUrl: defaultProxyUrl,
         },
         expectedVersion: 'v2',
       },
     ];
 
     geminiApiVersionCases.forEach(
-        ({description, llmParams, expectedVersion}) => {
-          it(description, () => {
-            const llm = new ApigeeLlm(llmParams);
-            expect(llm.liveApiVersion).toBe(expectedVersion);
-          });
+      ({description, llmParams, expectedVersion}) => {
+        it(description, () => {
+          const llm = new ApigeeLlm(llmParams);
+          expect(llm.liveApiVersion).toBe(expectedVersion);
         });
+      },
+    );
 
     const vertexApiVersionCases: ApiVersionTestCase[] = [
       {
         description:
-            'apigee/vertex_ai/model-id (no version defaults to v1beta1)',
+          'apigee/vertex_ai/model-id (no version defaults to v1beta1)',
         llmParams: {model: vertexModelString, proxyUrl: defaultProxyUrl},
         expectedVersion: 'v1beta1',
         setupEnv: {
@@ -389,7 +481,7 @@ describe('ApigeeLlm', () => {
         description: 'apigee/vertex_ai/v3/model-id uses v3',
         llmParams: {
           model: 'apigee/vertex_ai/v3/model-id',
-          proxyUrl: defaultProxyUrl
+          proxyUrl: defaultProxyUrl,
         },
         expectedVersion: 'v3',
         setupEnv: {
@@ -401,17 +493,18 @@ describe('ApigeeLlm', () => {
     ];
 
     vertexApiVersionCases.forEach(
-        ({description, llmParams, expectedVersion, setupEnv}) => {
-          it(description, () => {
-            if (setupEnv) {
-              Object.entries(setupEnv).forEach(([key, value]) => {
-                process.env[key] = value;
-              });
-            }
-            const llm = new ApigeeLlm(llmParams);
-            expect(llm.liveApiVersion).toBe(expectedVersion);
-          });
+      ({description, llmParams, expectedVersion, setupEnv}) => {
+        it(description, () => {
+          if (setupEnv) {
+            Object.entries(setupEnv).forEach(([key, value]) => {
+              process.env[key] = value;
+            });
+          }
+          const llm = new ApigeeLlm(llmParams);
+          expect(llm.liveApiVersion).toBe(expectedVersion);
         });
+      },
+    );
   });
 });
 
@@ -430,6 +523,7 @@ describe('ApigeeLlm LLMRegistry integration', () => {
 
   it('ApigeeLlm is registered by default', () => {
     expect(LLMRegistry.newLlm('apigee/gemini/gemini-1.5-flash')).toBeInstanceOf(
-        ApigeeLlm);
+      ApigeeLlm,
+    );
   });
 });

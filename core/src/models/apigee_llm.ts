@@ -3,8 +3,9 @@
  * Copyright 2026 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
-import {GoogleGenAI} from '@google/genai';
+import {HttpOptions} from '@google/genai';
 
+import {getBooleanEnvVar, isBrowser} from '../utils/env_aware_utils.js';
 import {logger} from '../utils/logger.js';
 
 import {BaseLlmConnection} from './base_llm_connection.js';
@@ -59,52 +60,57 @@ export interface ApigeeLlmParams {
 export class ApigeeLlm extends Gemini {
   private readonly proxyUrl: string;
 
-
-  constructor({
-    model,
-    proxyUrl,
-    apiKey,
-    headers,
-  }: ApigeeLlmParams) {
-    if (!ApigeeLlm.validateModel(model)) {
-      throw new Error(`Model ${
-          model} is not a valid Apigee model, expected apigee/[<provider>/][<version>/]<model_id>`);
+  constructor({model, proxyUrl, apiKey, headers}: ApigeeLlmParams) {
+    if (!validateModel(model)) {
+      throw new Error(
+        `Model ${
+          model
+        } is not a valid Apigee model, expected apigee/[<provider>/][<version>/]<model_id>`,
+      );
     }
 
-    const vertexai = ApigeeLlm.isVertexAi(model);
+    const vertexai = isVertexAi(model);
     let project = '';
     let location = '';
-    const canReadEnv = typeof process === 'object';
-
     if (vertexai) {
-      if (!canReadEnv) {
-        throw new Error(`Environment variables ${
-            PROJECT_ENV_VARIABLE_NAME} and ${
-            LOCATION_ENV_VARIABLE_NAME} must be provided when using Vertex AI.`);
+      if (isBrowser()) {
+        throw new Error(
+          `Environment variables ${PROJECT_ENV_VARIABLE_NAME} and ${
+            LOCATION_ENV_VARIABLE_NAME
+          } must be provided when using Vertex AI.`,
+        );
       }
       if (!project) {
         project = process.env[PROJECT_ENV_VARIABLE_NAME] || '';
       }
       if (!project) {
-        throw new Error(`The ${
-            PROJECT_ENV_VARIABLE_NAME} environment variable must be set when using Vertex AI.`);
+        throw new Error(
+          `The ${
+            PROJECT_ENV_VARIABLE_NAME
+          } environment variable must be set when using Vertex AI.`,
+        );
       }
       if (!location) {
         location = process.env[LOCATION_ENV_VARIABLE_NAME] || '';
       }
       if (!location) {
-        throw new Error(`The ${
-            LOCATION_ENV_VARIABLE_NAME} environment variable must be set when using Vertex AI.`);
+        throw new Error(
+          `The ${
+            LOCATION_ENV_VARIABLE_NAME
+          } environment variable must be set when using Vertex AI.`,
+        );
       }
     } else {
-      if (canReadEnv && !apiKey) {
+      if (!isBrowser() && !apiKey) {
         // First check env vars then add a fake key if no key is provided.
-        apiKey = process.env[GOOGLE_GENAI_API_KEY_ENV_VARIABLE_NAME] ||
-            process.env[GEMINI_API_KEY_ENV_VARIABLE_NAME];
+        apiKey =
+          process.env[GOOGLE_GENAI_API_KEY_ENV_VARIABLE_NAME] ||
+          process.env[GEMINI_API_KEY_ENV_VARIABLE_NAME];
       }
       if (!apiKey) {
         logger.warn(
-            `No API key provided when using a Gemini model, using a fake key "-".`);
+          `No API key provided when using a Gemini model, using a fake key "-".`,
+        );
         apiKey = '-';
       }
     }
@@ -118,12 +124,15 @@ export class ApigeeLlm extends Gemini {
     });
 
     this.proxyUrl = proxyUrl ?? '';
-    if (canReadEnv && !this.proxyUrl) {
+    if (!isBrowser() && !this.proxyUrl) {
       this.proxyUrl = process.env[APIGEE_PROXY_URL_ENV_VARIABLE_NAME] ?? '';
     }
     if (!this.proxyUrl) {
-      throw new Error(`Proxy URL must be provided via the constructor or ${
-          APIGEE_PROXY_URL_ENV_VARIABLE_NAME} environment variable.`);
+      throw new Error(
+        `Proxy URL must be provided via the constructor or ${
+          APIGEE_PROXY_URL_ENV_VARIABLE_NAME
+        } environment variable.`,
+      );
     }
   }
 
@@ -132,52 +141,26 @@ export class ApigeeLlm extends Gemini {
    *
    * @returns A list of supported models.
    */
-  static override readonly supportedModels: Array<string|RegExp> = [
+  static override readonly supportedModels: Array<string | RegExp> = [
     /apigee\/.*/,
   ];
 
-  private _apigeeApiClient?: GoogleGenAI;
-  private _apigeeLiveApiClient?: GoogleGenAI;
-  private _apigeeLiveApiVersion?: string;
-
-  override get apiClient(): GoogleGenAI {
-    if (this._apigeeApiClient) {
-      return this._apigeeApiClient;
-    }
-
-    const combinedHeaders = {
-      ...this.trackingHeaders,
-      ...this.headers,
-    }
-
-    if (this.vertexai) {
-      this._apigeeApiClient = new GoogleGenAI({
-        vertexai: this.vertexai,
-        project: this.project,
-        location: this.location,
-        httpOptions: {
-          headers: combinedHeaders,
-          baseUrl: this.proxyUrl,
-        },
-      });
-    }
-    else {
-      this._apigeeApiClient = new GoogleGenAI({
-        apiKey: this.apiKey,
-        httpOptions: {
-          headers: combinedHeaders,
-          baseUrl: this.proxyUrl,
-        },
-      });
-    }
-    return this._apigeeApiClient;
+  protected override getHttpOptions(): HttpOptions {
+    const opts = super.getHttpOptions();
+    opts.baseUrl = this.proxyUrl;
+    return opts;
   }
 
+  protected override getLiveHttpOptions(): HttpOptions {
+    const opts = super.getLiveHttpOptions();
+    opts.baseUrl = this.proxyUrl;
+    return opts;
+  }
 
   private identifyApiVersion(): string {
-    const modelTrimmed = this.model.startsWith('apigee/') ?
-        this.model.substring('apigee/'.length) :
-        this.model;
+    const modelTrimmed = this.model.startsWith('apigee/')
+      ? this.model.substring('apigee/'.length)
+      : this.model;
     const components = modelTrimmed.split('/');
     if (components.length === 3) {
       // Format: <provider>/<version>/<model_id>
@@ -185,14 +168,19 @@ export class ApigeeLlm extends Gemini {
     }
     if (components.length === 2) {
       // Format: <version>/<model_id> but not <provider>/<model_id>
-      if ((components[0] != 'vertex_ai') && (components[0] != 'gemini') &&
-          components[0].startsWith('v')) {
+      if (
+        components[0] != 'vertex_ai' &&
+        components[0] != 'gemini' &&
+        components[0].startsWith('v')
+      ) {
         return components[0];
       }
     }
     // Default to v1beta1 for vertex AI and v1alpha for Gemini.
     return this.vertexai ? 'v1beta1' : 'v1alpha';
   }
+
+  private _apigeeLiveApiVersion?: string;
 
   override get liveApiVersion(): string {
     if (!this._apigeeLiveApiVersion) {
@@ -201,100 +189,77 @@ export class ApigeeLlm extends Gemini {
     return this._apigeeLiveApiVersion;
   }
 
-  override get liveApiClient(): GoogleGenAI {
-    if (!this._apigeeLiveApiClient) {
-      this._apigeeLiveApiClient = new GoogleGenAI({
-        apiKey: this.apiKey,
-        httpOptions: {
-          headers: this.trackingHeaders,
-          apiVersion: this.liveApiVersion,
-          baseUrl: this.proxyUrl,
-        },
-      });
-    }
-    return this._apigeeLiveApiClient;
-  }
-
-  private static isVertexAi(model: string): boolean {
-    return !model.startsWith('apigee/gemini/') &&
-        (model.startsWith('apigee/vertex_ai/') ||
-         ApigeeLlm.isEnvEnabled(GOOGLE_GENAI_USE_VERTEXAI_ENV_VARIABLE_NAME));
-  }
-
-  private static isEnvEnabled(envVariableName: string): boolean {
-    const canReadEnv = typeof process === 'object';
-    if (!canReadEnv) {
-      return false;
-    }
-    const envValue = process.env[envVariableName];
-    if (envValue) {
-      return envValue.toLowerCase() === 'true' || envValue === '1';
-    }
-    return false;
-  }
-
-
-  private static validateModel(model: string): boolean {
-    const validProviders = ['vertex_ai', 'gemini'];
-    if (!model.startsWith('apigee/')) {
-      return false;
-    }
-    const modelPart = model.substring('apigee/'.length);
-    if (modelPart.length === 0) {
-      return false;
-    }
-    const components = modelPart.split('/', -1);
-    if (components[components.length - 1].length === 0) {
-      return false;
-    }
-    // If the model string has exactly 1 component, it means only the model_id
-    // is present. This is a valid format (e.g. "apigee/my-model").
-    if (components.length == 1) {
-      return true;
-    }
-    if (components.length == 2) {
-      // allowed format: apigee/<provider>/<model_id>
-      // (e.g. apigee/vertex_ai/my-model)
-      if (validProviders.includes(components[0])) {
-        return true;
-      }
-      // allowed format: apigee/<version>/<model_id>
-      // (e.g.apigee/v1beta1/my-model)
-      return components[0].startsWith('v')
-    }
-    if (components.length == 3) {
-      // allowed format: apigee/<provider>/<version>/<model_id>
-      // (e.g. apigee/vertex_ai/v1beta1/my-model)
-      if (!validProviders.includes(components[0])) {
-        return false;
-      }
-      return components[1].startsWith('v');
-    }
-    return false;
-  }
-
-  private static getModelId(model: string): string {
-    if (!ApigeeLlm.validateModel(model)) {
-      throw new Error(`Model ${
-          model} is not a valid Apigee model, expected apigee/[<provider>/][<version>/]<model_id>`);
-    }
-    const components = model.split('/');
-    return components[components.length - 1];
-  }
-
-  override async *
-      generateContentAsync(
-          llmRequest: LlmRequest,
-          stream = false,
-          ): AsyncGenerator<LlmResponse, void> {
+  override async *generateContentAsync(
+    llmRequest: LlmRequest,
+    stream = false,
+  ): AsyncGenerator<LlmResponse, void> {
     const modelToUse = llmRequest.model ?? this.model;
-    llmRequest.model = ApigeeLlm.getModelId(modelToUse);
+    llmRequest.model = getModelId(modelToUse);
     yield* super.generateContentAsync(llmRequest, stream);
   }
 
   override async connect(llmRequest: LlmRequest): Promise<BaseLlmConnection> {
     const modelToUse = llmRequest.model ?? this.model;
-    llmRequest.model = ApigeeLlm.getModelId(modelToUse);
+    llmRequest.model = getModelId(modelToUse);
     return super.connect(llmRequest);
   }
+}
+
+function isVertexAi(model: string): boolean {
+  return (
+    !model.startsWith('apigee/gemini/') &&
+    (model.startsWith('apigee/vertex_ai/') ||
+      getBooleanEnvVar(GOOGLE_GENAI_USE_VERTEXAI_ENV_VARIABLE_NAME))
+  );
+}
+
+function getModelId(model: string): string {
+  if (!validateModel(model)) {
+    throw new Error(
+      `Model ${
+        model
+      } is not a valid Apigee model, expected apigee/[<provider>/][<version>/]<model_id>`,
+    );
+  }
+  const components = model.split('/');
+  return components[components.length - 1];
+}
+
+function validateModel(model: string): boolean {
+  const validProviders = ['vertex_ai', 'gemini'];
+  if (!model.startsWith('apigee/')) {
+    return false;
+  }
+  const modelPart = model.substring('apigee/'.length);
+  if (modelPart.length === 0) {
+    return false;
+  }
+  const components = modelPart.split('/', -1);
+  if (components[components.length - 1].length === 0) {
+    return false;
+  }
+  // If the model string has exactly 1 component, it means only the model_id
+  // is present. This is a valid format (e.g. "apigee/my-model").
+  if (components.length == 1) {
+    return true;
+  }
+  if (components.length == 2) {
+    // allowed format: apigee/<provider>/<model_id>
+    // (e.g. apigee/vertex_ai/my-model)
+    if (validProviders.includes(components[0])) {
+      return true;
+    }
+    // allowed format: apigee/<version>/<model_id>
+    // (e.g.apigee/v1beta1/my-model)
+    return components[0].startsWith('v');
+  }
+  if (components.length == 3) {
+    // allowed format: apigee/<provider>/<version>/<model_id>
+    // (e.g. apigee/vertex_ai/v1beta1/my-model)
+    if (!validProviders.includes(components[0])) {
+      return false;
+    }
+    return components[1].startsWith('v');
+  }
+  return false;
 }

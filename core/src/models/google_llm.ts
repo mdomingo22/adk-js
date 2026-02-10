@@ -11,6 +11,7 @@ import {
   FinishReason,
   GenerateContentResponse,
   GoogleGenAI,
+  HttpOptions,
   Part,
 } from '@google/genai';
 
@@ -59,11 +60,11 @@ export interface GeminiParams {
  * Integration for Gemini models.
  */
 export class Gemini extends BaseLlm {
-  protected readonly apiKey?: string;
+  private readonly apiKey?: string;
   protected readonly vertexai: boolean;
-  protected readonly project?: string;
-  protected readonly location?: string;
-  protected readonly headers?: Record<string, string>;
+  private readonly project?: string;
+  private readonly location?: string;
+  private readonly headers?: Record<string, string>;
 
   /**
    * @param params The parameters for creating a Gemini instance.
@@ -249,27 +250,26 @@ export class Gemini extends BaseLlm {
     }
   }
 
+  protected getHttpOptions(): HttpOptions {
+    return {headers: {...this.trackingHeaders, ...this.headers}};
+  }
+
   get apiClient(): GoogleGenAI {
     if (this._apiClient) {
       return this._apiClient;
     }
-
-    const combinedHeaders = {
-      ...this.trackingHeaders,
-      ...this.headers,
-    };
 
     if (this.vertexai) {
       this._apiClient = new GoogleGenAI({
         vertexai: this.vertexai,
         project: this.project,
         location: this.location,
-        httpOptions: {headers: combinedHeaders},
+        httpOptions: this.getHttpOptions(),
       });
     } else {
       this._apiClient = new GoogleGenAI({
         apiKey: this.apiKey,
-        httpOptions: {headers: combinedHeaders},
+        httpOptions: this.getHttpOptions(),
       });
     }
     return this._apiClient;
@@ -292,14 +292,18 @@ export class Gemini extends BaseLlm {
     return this._liveApiVersion;
   }
 
+  protected getLiveHttpOptions(): HttpOptions {
+    return {
+      headers: this.trackingHeaders,
+      apiVersion: this.liveApiVersion,
+    };
+  }
+
   get liveApiClient(): GoogleGenAI {
     if (!this._liveApiClient) {
       this._liveApiClient = new GoogleGenAI({
         apiKey: this.apiKey,
-        httpOptions: {
-          headers: this.trackingHeaders,
-          apiVersion: this.liveApiVersion,
-        },
+        httpOptions: this.getLiveHttpOptions(),
       });
     }
     return this._liveApiClient;
