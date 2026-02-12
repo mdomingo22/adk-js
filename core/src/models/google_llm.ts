@@ -15,6 +15,7 @@ import {
   Part,
 } from '@google/genai';
 
+import {getBooleanEnvVar, isBrowser} from '../utils/env_aware_utils.js';
 import {logger} from '../utils/logger.js';
 import {GoogleLLMVariant} from '../utils/variant_utils.js';
 
@@ -83,50 +84,23 @@ export class Gemini extends BaseLlm {
 
     super({model});
 
-    this.project = project;
-    this.location = location;
-    this.apiKey = apiKey;
+    const params = geminiInitParams({
+      model,
+      vertexai,
+      project,
+      location,
+      apiKey,
+    });
+    if (!params.vertexai && !params.apiKey) {
+      throw new Error(
+        'API key must be provided via constructor or GOOGLE_GENAI_API_KEY or GEMINI_API_KEY environment variable.',
+      );
+    }
+    this.project = params.project;
+    this.location = params.location;
+    this.apiKey = params.apiKey;
     this.headers = headers;
-
-    const canReadEnv = typeof process === 'object';
-
-    this.vertexai = !!vertexai;
-    if (!this.vertexai && canReadEnv) {
-      const vertexAIfromEnv = process.env['GOOGLE_GENAI_USE_VERTEXAI'];
-      if (vertexAIfromEnv) {
-        this.vertexai =
-          vertexAIfromEnv.toLowerCase() === 'true' || vertexAIfromEnv === '1';
-      }
-    }
-
-    if (this.vertexai) {
-      if (canReadEnv && !this.project) {
-        this.project = process.env['GOOGLE_CLOUD_PROJECT'];
-      }
-      if (canReadEnv && !this.location) {
-        this.location = process.env['GOOGLE_CLOUD_LOCATION'];
-      }
-      if (!this.project) {
-        throw new Error(
-          'VertexAI project must be provided via constructor or GOOGLE_CLOUD_PROJECT environment variable.',
-        );
-      }
-      if (!this.location) {
-        throw new Error(
-          'VertexAI location must be provided via constructor or GOOGLE_CLOUD_LOCATION environment variable.',
-        );
-      }
-    } else {
-      if (!this.apiKey && canReadEnv) {
-        this.apiKey =
-          process.env['GOOGLE_GENAI_API_KEY'] || process.env['GEMINI_API_KEY'];
-      }
-      if (!this.apiKey) {
-        throw new Error(
-          'API key must be provided via constructor or GOOGLE_GENAI_API_KEY or GEMINI_API_KEY environment variable.',
-        );
-      }
-    }
+    this.vertexai = !!params.vertexai;
   }
 
   /**
@@ -380,4 +354,44 @@ function removeDisplayNameIfPresent(
   if (dataObj && (dataObj as FileData).displayName) {
     (dataObj as FileData).displayName = undefined;
   }
+}
+
+export function geminiInitParams({
+  model,
+  vertexai,
+  project,
+  location,
+  apiKey,
+}: GeminiParams) {
+  const params: GeminiParams = {model, vertexai, project, location, apiKey};
+
+  params.vertexai = !!vertexai;
+  if (!params.vertexai && !isBrowser()) {
+    params.vertexai = getBooleanEnvVar('GOOGLE_GENAI_USE_VERTEXAI');
+  }
+
+  if (params.vertexai) {
+    if (!isBrowser() && !params.project) {
+      params.project = process.env['GOOGLE_CLOUD_PROJECT'];
+    }
+    if (!isBrowser() && !params.location) {
+      params.location = process.env['GOOGLE_CLOUD_LOCATION'];
+    }
+    if (!params.project) {
+      throw new Error(
+        'VertexAI project must be provided via constructor or GOOGLE_CLOUD_PROJECT environment variable.',
+      );
+    }
+    if (!params.location) {
+      throw new Error(
+        'VertexAI location must be provided via constructor or GOOGLE_CLOUD_LOCATION environment variable.',
+      );
+    }
+  } else {
+    if (!params.apiKey && !isBrowser()) {
+      params.apiKey =
+        process.env['GOOGLE_GENAI_API_KEY'] || process.env['GEMINI_API_KEY'];
+    }
+  }
+  return params;
 }

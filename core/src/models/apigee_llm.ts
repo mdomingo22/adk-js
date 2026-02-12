@@ -5,22 +5,17 @@
  */
 import {HttpOptions} from '@google/genai';
 
-import {getBooleanEnvVar, isBrowser} from '../utils/env_aware_utils.js';
+import {isBrowser} from '../utils/env_aware_utils.js';
 import {logger} from '../utils/logger.js';
 
 import {BaseLlmConnection} from './base_llm_connection.js';
-import {Gemini} from './google_llm.js';
+import {Gemini, geminiInitParams, GeminiParams} from './google_llm.js';
 import {LlmRequest} from './llm_request.js';
 import {LlmResponse} from './llm_response.js';
 
 const APIGEE_PROXY_URL_ENV_VARIABLE_NAME = 'APIGEE_PROXY_URL';
-const GOOGLE_GENAI_USE_VERTEXAI_ENV_VARIABLE_NAME = 'GOOGLE_GENAI_USE_VERTEXAI';
-const PROJECT_ENV_VARIABLE_NAME = 'GOOGLE_CLOUD_PROJECT';
-const LOCATION_ENV_VARIABLE_NAME = 'GOOGLE_CLOUD_LOCATION';
-const GOOGLE_GENAI_API_KEY_ENV_VARIABLE_NAME = 'GOOGLE_GENAI_API_KEY';
-const GEMINI_API_KEY_ENV_VARIABLE_NAME = 'GEMINI_API_KEY';
 
-export interface ApigeeLlmParams {
+export interface ApigeeLlmParams extends GeminiParams {
   /**
    * The name of the model to use. The model string specifies the LLM provider
    * (e.g., Vertex AI, Gemini), API version, and the model ID. Supported format:
@@ -51,16 +46,29 @@ export interface ApigeeLlmParams {
    * used for the "x-goog-api-key" header.
    */
   apiKey?: string;
-  /**
-   * Headers to merge with internally crafted headers.
-   */
-  headers?: Record<string, string>;
 }
 
 export class ApigeeLlm extends Gemini {
   private readonly proxyUrl: string;
 
-  constructor({model, proxyUrl, apiKey, headers}: ApigeeLlmParams) {
+  /**
+   * A list of model name patterns that are supported by this LLM.
+   *
+   * @returns A list of supported models.
+   */
+  static override readonly supportedModels: Array<string | RegExp> = [
+    /apigee\/.*/,
+  ];
+
+  constructor({
+    model,
+    proxyUrl,
+    apiKey,
+    vertexai,
+    location,
+    project,
+    headers,
+  }: ApigeeLlmParams) {
     if (!validateModel(model)) {
       throw new Error(
         `Model ${
@@ -69,58 +77,9 @@ export class ApigeeLlm extends Gemini {
       );
     }
 
-    const vertexai = isVertexAi(model);
-    let project = '';
-    let location = '';
-    if (vertexai) {
-      if (isBrowser()) {
-        throw new Error(
-          `Environment variables ${PROJECT_ENV_VARIABLE_NAME} and ${
-            LOCATION_ENV_VARIABLE_NAME
-          } must be provided when using Vertex AI.`,
-        );
-      }
-      if (!project) {
-        project = process.env[PROJECT_ENV_VARIABLE_NAME] || '';
-      }
-      if (!project) {
-        throw new Error(
-          `The ${
-            PROJECT_ENV_VARIABLE_NAME
-          } environment variable must be set when using Vertex AI.`,
-        );
-      }
-      if (!location) {
-        location = process.env[LOCATION_ENV_VARIABLE_NAME] || '';
-      }
-      if (!location) {
-        throw new Error(
-          `The ${
-            LOCATION_ENV_VARIABLE_NAME
-          } environment variable must be set when using Vertex AI.`,
-        );
-      }
-    } else {
-      if (!isBrowser() && !apiKey) {
-        // First check env vars then add a fake key if no key is provided.
-        apiKey =
-          process.env[GOOGLE_GENAI_API_KEY_ENV_VARIABLE_NAME] ||
-          process.env[GEMINI_API_KEY_ENV_VARIABLE_NAME];
-      }
-      if (!apiKey) {
-        logger.warn(
-          `No API key provided when using a Gemini model, using a fake key "-".`,
-        );
-        apiKey = '-';
-      }
-    }
     super({
-      model: model,
-      apiKey: apiKey,
-      vertexai: vertexai,
-      project: project,
-      location: location,
-      headers: headers,
+      ...apigeeToGeminiInitParams({model, vertexai, project, location, apiKey}),
+      headers,
     });
 
     this.proxyUrl = proxyUrl ?? '';
@@ -135,15 +94,6 @@ export class ApigeeLlm extends Gemini {
       );
     }
   }
-
-  /**
-   * A list of model name patterns that are supported by this LLM.
-   *
-   * @returns A list of supported models.
-   */
-  static override readonly supportedModels: Array<string | RegExp> = [
-    /apigee\/.*/,
-  ];
 
   protected override getHttpOptions(): HttpOptions {
     const opts = super.getHttpOptions();
@@ -205,14 +155,34 @@ export class ApigeeLlm extends Gemini {
   }
 }
 
-function isVertexAi(model: string): boolean {
-  return (
-    !model.startsWith('apigee/gemini/') &&
-    (model.startsWith('apigee/vertex_ai/') ||
-      getBooleanEnvVar(GOOGLE_GENAI_USE_VERTEXAI_ENV_VARIABLE_NAME))
-  );
+function apigeeToGeminiInitParams({
+  model,
+  vertexai,
+  project,
+  location,
+  apiKey,
+}: GeminiParams) {
+  const params = geminiInitParams({model, vertexai, project, location, apiKey});
+  params.vertexai =
+    params.vertexai || params.model?.startsWith('apigee/vertex_ai/');
+  if (params.vertexai) {
+    return params;
+  }
+  if (!params.apiKey) {
+    logger.warn(
+      `No API key provided when using a Gemini model, using a fake key "-".`,
+    );
+    params.apiKey = '-';
+  }
+  return params;
 }
 
+/**
+ * Extracts the model ID from the model string.
+ *
+ * @param model - The model string (e.g. "apigee/gemini-2.5-flash")
+ * @returns The the model id (e.g. "gemini-2.5-flash")
+ */
 function getModelId(model: string): string {
   if (!validateModel(model)) {
     throw new Error(
@@ -225,6 +195,12 @@ function getModelId(model: string): string {
   return components[components.length - 1];
 }
 
+/**
+ * Validates the Apigee model string format.
+ *
+ * @param model - The model string.
+ * @returns True if the model string is valid, false otherwise.
+ */
 function validateModel(model: string): boolean {
   const validProviders = ['vertex_ai', 'gemini'];
   if (!model.startsWith('apigee/')) {
