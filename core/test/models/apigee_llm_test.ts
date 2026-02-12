@@ -131,7 +131,6 @@ describe('ApigeeLlm', () => {
         proxyUrl: defaultProxyUrl,
       });
       const apiClient = llm.apiClient;
-      // tslint:disable-next-line:no-any
       const httpOptions = apiClient['apiClient']['clientOptions'][
         'httpOptions'
       ] as HttpOptions;
