@@ -391,6 +391,8 @@ describe('ApigeeLlm', () => {
       const request: LlmRequest = {
         contents: [],
         model: 'invalid/model',
+        liveConnectConfig: {},
+        toolsDict: {},
       };
 
       const generator = llm.generateContentAsync(request);
